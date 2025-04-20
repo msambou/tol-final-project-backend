@@ -18,6 +18,8 @@ from worker.database.database import get_db
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import Depends
 
+from collections import Counter
+
 
 load_dotenv()
 
@@ -49,6 +51,7 @@ class LLMAnalyzer:
             "You are an expert programming tutor that analyzes student code submissions."
         )
 
+
         # Prompt now dynamically includes the extracted code
         prompt = f"""The following are student codes:
 
@@ -67,6 +70,7 @@ class LLMAnalyzer:
         10. Overall strengths students have  
         11. Correct implementation
         12. Topic for The Problem  
+        13. Student Scores out of hundred as list in multiples of 10
         """
 
         # Call to OpenAI model
@@ -120,6 +124,19 @@ class LLMAnalyzer:
         # Rename keys so client can easily read values
         # Replace spaces with underscores in all keys
         data = {k.replace(" ", "_"): v for k, v in data.items()}
+
+        # convert scores to array of frequencies
+        raw_scores = data["student_scores_out_of_hundred_as_list_in_multiples_of_10"]
+
+        scores = re.findall(r"-\s*Student\s*\d+:\s*(\d+)", raw_scores)
+
+        # Count frequency of each score
+        score_counts = Counter(map(int, scores))
+
+        # Convert to desired format
+        result = [{"score": score, "count": count} for score, count in score_counts.items()]
+
+        data["student_scores_out_of_hundred_as_list_in_multiples_of_10"] = result
         return data
 
 
@@ -172,3 +189,17 @@ async def get_all_analyses(db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Analysis).order_by(Analysis.created_at.desc()))
     analyses = result.scalars().all()
     return jsonable_encoder(analyses)
+
+
+
+@app.get("/analyses/latest")
+async def get_latest_analysis(db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(Analysis).order_by(Analysis.created_at.desc()).limit(1)
+    )
+    latest = result.scalars().first()
+    
+    if not latest:
+        raise HTTPException(status_code=404, detail="No analysis found.")
+    
+    return jsonable_encoder(latest)
