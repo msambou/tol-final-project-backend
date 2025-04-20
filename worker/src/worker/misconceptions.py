@@ -7,6 +7,8 @@ import os
 from dotenv import load_dotenv
 import re
 import json
+from fastapi.encoders import jsonable_encoder
+from sqlalchemy.future import select
 
 from worker.models.base import Base
 from worker.database.database import engine
@@ -163,3 +165,10 @@ async def analyze(
 
     except zipfile.BadZipFile:
         raise HTTPException(status_code=400, detail="Invalid ZIP file.")
+
+
+@app.get("/analyses")
+async def get_all_analyses(db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Analysis).order_by(Analysis.created_at.desc()))
+    analyses = result.scalars().all()
+    return jsonable_encoder(analyses)
