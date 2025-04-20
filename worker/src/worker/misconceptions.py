@@ -6,11 +6,26 @@ from openai import OpenAI
 import os
 from dotenv import load_dotenv
 import re
+import json
+
+from worker.models.base import Base
+from worker.database.database import engine
+
+from worker.models.models import Analysis
+from worker.database.database import get_db
+from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import Depends
+
 
 load_dotenv()
 
 
 app = FastAPI()
+
+@app.on_event("startup")
+async def startup():
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
 
 class LLMAnalyzer:
     def __init__(self, student_submissions):
@@ -48,7 +63,8 @@ class LLMAnalyzer:
         8. Overall coding errors students have  
         9. Overall improvements students need  
         10. Overall strengths students have  
-        11. Correct implementation  
+        11. Correct implementation
+        12. Topic for The Problem  
         """
 
         # Call to OpenAI model
@@ -110,12 +126,14 @@ async def healthcheck():
     return "Ok"
 
 @app.post("/analyze")
-async def analyze(file: UploadFile = File(...)):
+async def analyze(
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db)
+):
     if not file.filename.endswith('.zip'):
         raise HTTPException(status_code=400, detail="Uploaded file must be a .zip archive.")
 
     try:
-        # Read file bytes and open as zip
         contents = await file.read()
         zip_file = zipfile.ZipFile(io.BytesIO(contents))
 
@@ -124,20 +142,24 @@ async def analyze(file: UploadFile = File(...)):
         for name in zip_file.namelist():
             with zip_file.open(name) as f:
                 try:
-                    text = f.read().decode('utf-8')  # assuming UTF-8 encoding
-                    files_content.append({
-                        "filename": name,
-                        "content": text
-                    })
+                    text = f.read().decode('utf-8')
+                    files_content.append({"filename": name, "content": text})
                 except UnicodeDecodeError:
-                    # Skip non-text files
-                    files_content.append({
-                        "filename": name,
-                        "content": "Could not decode file as text"
-                    })
+                    files_content.append({"filename": name, "content": "Could not decode file as text"})
 
         llmAgent = LLMAnalyzer(student_submissions=files_content)
-        return llmAgent.getMisconceptionsResponse()
+        analysis_data = llmAgent.getMisconceptionsResponse()
+
+        # Use the 'goal' value as the topic
+        topic = analysis_data.get("topic_for_the_problem", "Untitled Topic")
+
+        # Save to database
+        new_analysis = Analysis(topic=topic, response=json.dumps(analysis_data))
+        db.add(new_analysis)
+        await db.commit()
+        await db.refresh(new_analysis)
+
+        return {"analysis_id": new_analysis.id, "analysis_data": analysis_data}
 
     except zipfile.BadZipFile:
         raise HTTPException(status_code=400, detail="Invalid ZIP file.")
