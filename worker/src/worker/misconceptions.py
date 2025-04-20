@@ -96,6 +96,12 @@ class LLMAnalyzer:
             value = re.sub(r"^\n+", "", value)  # Remove leading newlines
             data[key] = value
 
+        # Convert all keys to lowercase
+        data = {k.lower(): v for k, v in data.items()}
+        
+        # Rename keys so client can easily read values
+        # Replace spaces with underscores in all keys
+        data = {k.replace(" ", "_"): v for k, v in data.items()}
         return data
 
 
