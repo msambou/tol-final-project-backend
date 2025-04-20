@@ -22,23 +22,11 @@ class LLMPrompt(BaseModel):
 
     @validator("message")
     def check_token_count(cls, v: str) -> str:
-        """Checks token count.
-
-        Args:
-            v (str): The string we want to check.
-
-        Raises:
-            RequestValidationError: If the number of tokens is greater than our context-size, then fail.
-
-        Returns:
-            str: Returns string as-is if validated.
-        """
+        """Checks token count against context limit."""
         token_count = len(LLM_MODEL.tokenize(v.encode("utf-8")))
         if token_count > CONTEXT_SIZE:
             msg = f"Token count exceeds the maximum allowed limit of {CONTEXT_SIZE}."
-            raise RequestValidationError(
-                msg,
-            )
+            raise RequestValidationError(msg)
         return v
 
 
@@ -74,45 +62,44 @@ async def get_llm_response(
     message: LLMPrompt,
     llm: Llama,
 ) -> Union[CreateCompletionResponse, Iterator[CreateCompletionResponse]]:
-    """Simple LLM response function.
+    """Generates structured feedback on student code."""
 
-    Args:
-        message (LLMPrompt): Prompt as input.
-        llm (Llama): Pre-loaded model.
+    system_message = "You are an expert Python tutor. Your job is to identify misconceptions students have in the code, explain them clearly, and suggest correct alternatives."
 
-    Returns:
-        Union[CreateCompletionResponse, Iterator[CreateCompletionResponse]]: Tokens of output.
-    """
-    system_message = "You are a helpful assistant."
-    prompt = message
+    prompt = """A student wrote the following function:
+
+def fibonacci(n):
+    a, b = 0, 1
+    while a < n:
+        a, b = b, a + b
+    return b
+
+Please analyze this function and explain:
+1. What the student likely intended.
+2. Any misconceptions in the code.
+3. A correct version of the code if the goal is to return the nth Fibonacci number.
+4. Example usage and output.
+"""
+
     template = f"""<|system|>
-    {system_message}</s>
-    <|user|>
-    {prompt}</s>
-    <|assistant|>"""
-    return llm(template, temperature=0.0, max_tokens=128)
+{system_message}</s>
+<|user|>
+{prompt}</s>
+<|assistant|>"""
+
+    return llm(template, temperature=0.0, max_tokens=512)
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:  # pragma: no cover
-    """Gets the lifespan of an app.
-
-    Args:
-        app (FastAPI): app instance.
-
-    Yields:
-        None: Allows FastAPI to handle startup and shutdown events.
-    """
-    # Load the ML model
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+    """Lifespan handler for FastAPI startup/shutdown."""
     global LLM_MODEL
     LLM_MODEL = Llama(
         model_path="tinyllama-1.1b-chat-v1.0.Q2_K.gguf",
         n_ctx=CONTEXT_SIZE,
         n_batch=1,
     )
-
     yield
-    # Clean up the ML models and release the resources
     del LLM_MODEL
 
 
@@ -123,22 +110,24 @@ app = FastAPI(lifespan=lifespan)
 async def send_llm_response(
     message: LLMPrompt = Depends(LLMPrompt),
 ) -> Union[CreateCompletionResponse, Iterator[CreateCompletionResponse]]:
-    """Send model output as API response.
-
-    Args:
-        message (LLMPrompt, optional): API input.. Defaults to Depends(LLMPrompt).
-
-    Returns:
-        Union[CreateCompletionResponse, Iterator[CreateCompletionResponse]]: API output.
-    """
-    return await get_llm_response(message, LLM_MODEL)
+    """Send model output as API response."""
+    message = """
+        def fibonacci(n):
+            a, b = 0, 1
+            while a < n:
+                a, b = b, a + b
+            return b
+"""
+    msgObj = LLMPrompt(message=message)
+    return await get_llm_response(msgObj, LLM_MODEL)
 
 
 @app.get("/healthcheck")
 def healthcheck() -> Literal["OK"]:
-    """Simple healthcheck.
-
-    Returns:
-        str: "OK"
-    """
+    """Simple healthcheck."""
     return "OK"
+
+@app.post("/analyze")
+def analyzeMisconceptions():
+    # I am using fastAPI
+    pass
