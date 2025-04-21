@@ -213,3 +213,13 @@ async def get_latest_analysis(db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=404, detail="No analysis found.")
     
     return jsonable_encoder(latest)
+
+@app.get("/analyses/{analysis_id}")
+async def get_analysis_by_id(analysis_id: int, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Analysis).where(Analysis.id == analysis_id))
+    analysis = result.scalars().first()
+
+    if not analysis:
+        raise HTTPException(status_code=404, detail="Analysis not found.")
+
+    return jsonable_encoder(analysis)
