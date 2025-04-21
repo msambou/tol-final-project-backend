@@ -67,9 +67,9 @@ class LLMAnalyzer:
 
         {student_code_snippets}
 
-        Please analyze their submissions and respond using the following structure:
+        Please analyze their submissions and respond using the following structure. I want a number for anything count related.
         1. The goal of the coding assignment  
-        2. Overall Count of Misconceptions  
+        2. Overall Count of Misconceptions 
         3. Overall Count of Coding Errors  
         4. Overall Count of Improvements  
         5. Overall Count of Strengths  
@@ -135,10 +135,26 @@ class LLMAnalyzer:
         # Replace spaces with underscores in all keys
         data = {k.replace(" ", "_"): v for k, v in data.items()}
 
-        # convert scores to array of frequencies
-        raw_scores = data["student_scores_out_of_hundred_as_list_in_multiples_of_10"]
+        print("-------------------------data")
+        print(data)
+        print("-------------------------")
 
+        # convert scores to array of frequencies
+        key = "student_scores_out_of_hundred_as_list_in_multiples_of_10"
+
+        if key in data:
+            raw_scores = data[key]
+        else:
+            fallback_key = next((k for k in data if "student_scores" in k), None)
+            if fallback_key:
+                data[key] = data[fallback_key]  # create the expected key
+                raw_scores = data[key]
+            else:
+                raw_scores = None  # or handle the missing case appropriately
+
+        
         scores = re.findall(r"-\s*Student\s*\d+:\s*(\d+)", raw_scores)
+        
 
         # Count frequency of each score
         score_counts = Counter(map(int, scores))

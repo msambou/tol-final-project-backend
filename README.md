@@ -17,12 +17,11 @@ LLM Inference server for the Tools for Online Learning Project
 
 2. Run the app
     cd src
-    uvicorn worker.llmserver:app
+    uvicorn worker.misconceptions:app
 
 
 ## Local Testing
 
     curl http://localhost:8000/healthcheck
 
-    curl http://localhost:8000/api?message=hi
 
