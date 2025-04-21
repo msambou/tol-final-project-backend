@@ -19,12 +19,22 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import Depends
 
 from collections import Counter
+from fastapi.middleware.cors import CORSMiddleware
+
 
 
 load_dotenv()
 
 
 app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # or ["*"] to allow all origins
+    allow_credentials=True,
+    allow_methods=["*"],  # allows all HTTP methods
+    allow_headers=["*"],  # allows all headers
+)
 
 @app.on_event("startup")
 async def startup():
